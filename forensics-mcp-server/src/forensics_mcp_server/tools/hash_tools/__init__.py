@@ -1,1 +1,0 @@
-"""Hash calculation tools."""
