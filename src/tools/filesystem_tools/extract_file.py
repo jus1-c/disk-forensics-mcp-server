@@ -3,8 +3,8 @@
 import os
 from typing import Dict, Any
 from pydantic import BaseModel, Field
-from ...utils.image_detector import ImageDetector
-from ...models.schemas import ErrorOutput
+from src.utils.image_detector import ImageDetector
+from src.models.schemas import ErrorOutput
 
 
 class ExtractFileInput(BaseModel):

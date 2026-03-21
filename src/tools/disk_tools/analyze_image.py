@@ -2,8 +2,8 @@
 
 import json
 from typing import Dict, Any
-from ...utils.image_detector import ImageDetector
-from ...models.schemas import (
+from src.utils.image_detector import ImageDetector
+from src.models.schemas import (
     AnalyzeDiskImageInput,
     DiskImageInfo,
     ErrorOutput,

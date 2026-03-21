@@ -1,8 +1,8 @@
 """Tool for getting directory tree structure from a partition."""
 
 from typing import Dict, Any, List
-from ...utils.image_detector import ImageDetector
-from ...models.schemas import (
+from src.utils.image_detector import ImageDetector
+from src.models.schemas import (
     ListFilesInput,
     DirectoryTreeOutput,
     ErrorOutput,

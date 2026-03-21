@@ -1,8 +1,8 @@
 """Tool for getting detailed file metadata from a partition."""
 
 from typing import Dict, Any
-from ...utils.image_detector import ImageDetector
-from ...models.schemas import (
+from src.utils.image_detector import ImageDetector
+from src.models.schemas import (
     GetFileMetadataInput,
     FileMetadataOutput,
     FileEntry,

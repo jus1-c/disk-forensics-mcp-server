@@ -12,25 +12,25 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 # Import disk tools
-from ..tools.disk_tools.analyze_image import analyze_disk_image, tool_definition as analyze_tool
-from ..tools.disk_tools.list_partitions import list_partitions, tool_definition as partitions_tool
+from src.tools.disk_tools.analyze_image import analyze_disk_image, tool_definition as analyze_tool
+from src.tools.disk_tools.list_partitions import list_partitions, tool_definition as partitions_tool
 
 # Import filesystem tools
-from ..tools.filesystem_tools.list_files import list_files, tool_definition as list_files_tool
-from ..tools.filesystem_tools.read_file import read_file_content, tool_definition as read_file_tool
-from ..tools.filesystem_tools.extract_file import extract_file, tool_definition as extract_file_tool
-from ..tools.filesystem_tools.get_directory_tree import get_directory_tree, tool_definition as tree_tool
-from ..tools.filesystem_tools.get_file_metadata import get_file_metadata, tool_definition as metadata_tool
-from ..tools.filesystem_tools.search_by_extension import search_by_extension, tool_definition as ext_search_tool
-from ..tools.filesystem_tools.search_by_timestamp import search_by_timestamp, tool_definition as time_search_tool
-from ..tools.filesystem_tools.scan_deleted_files import scan_deleted_files, tool_definition as deleted_tool
+from src.tools.filesystem_tools.list_files import list_files, tool_definition as list_files_tool
+from src.tools.filesystem_tools.read_file import read_file_content, tool_definition as read_file_tool
+from src.tools.filesystem_tools.extract_file import extract_file, tool_definition as extract_file_tool
+from src.tools.filesystem_tools.get_directory_tree import get_directory_tree, tool_definition as tree_tool
+from src.tools.filesystem_tools.get_file_metadata import get_file_metadata, tool_definition as metadata_tool
+from src.tools.filesystem_tools.search_by_extension import search_by_extension, tool_definition as ext_search_tool
+from src.tools.filesystem_tools.search_by_timestamp import search_by_timestamp, tool_definition as time_search_tool
+from src.tools.filesystem_tools.scan_deleted_files import scan_deleted_files, tool_definition as deleted_tool
 
 # Import hash tools
-from ..tools.hash_tools.calculate_hash import calculate_hash, tool_definition as hash_tool
+from src.tools.hash_tools.calculate_hash import calculate_hash, tool_definition as hash_tool
 
 # Import cache utilities
-from ..utils.image_detector import ImageDetector
-from ..utils.parallel_utils import cleanup_parallel_processing
+from src.utils.image_detector import ImageDetector
+from src.utils.parallel_utils import cleanup_parallel_processing
 
 
 # Tool registry

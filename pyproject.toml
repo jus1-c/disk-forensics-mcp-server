@@ -50,13 +50,14 @@ dev = [
 ]
 
 [project.scripts]
-disk-forensics-mcp-server = "server.mcp_server:main"
+disk-forensics-mcp-server = "src.__main__:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["src*"]
 
 [tool.setuptools.package-dir]
-"" = "src"
+"" = "."
 
 [tool.black]
 line-length = 100

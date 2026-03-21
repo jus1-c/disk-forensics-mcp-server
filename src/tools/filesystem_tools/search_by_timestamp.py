@@ -2,8 +2,8 @@
 
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from ...utils.image_detector import ImageDetector
-from ...models.schemas import (
+from src.utils.image_detector import ImageDetector
+from src.models.schemas import (
     ErrorOutput,
 )
 
