@@ -2,49 +2,6 @@
 
 MCP Server for disk forensics analysis, supporting multiple image formats including RAW, E01, VMDK, VHD/VHDX, and AD1.
 
-## 🆕 Recent Updates
-
-### v0.2.0 - Major Performance Improvements
-
-#### 🚀 **Global Handler Caching** (NEW)
-- **Persistent cache** across all tool calls - survives entire MCP session
-- **Massive speedup**: 279x - 235,000x faster on cached data
-- **Real-world performance**: 29s → 0.1s for full filesystem traversal
-- **Cache statistics**: Monitor hits, misses, and hit rates
-
-#### 📊 **Enhanced Cache Management** (NEW)
-- **Increased capacity**: 500,000 cache entries (50x increase)
-- **LRU eviction**: Automatically removes oldest entries when full
-- **Intelligent batching**: Removes 5,000 entries at a time for efficiency
-
-#### ⚡ **Parallel Processing** (NEW)
-- **ThreadPoolExecutor**: Process directories in parallel
-- **Optimal workers**: Auto-adjusts based on CPU cores (max 4)
-- **Speed boost**: 2-4x faster for recursive operations
-
-#### 🔧 **Easy Installation** (IMPROVED)
-- **Absolute imports**: No more relative import issues
-- **Entry point**: Simple `disk-forensics-mcp-server` command
-- **One-line install**: `pip install -e .`
-
-#### 🛡️ **Graceful Shutdown** (NEW)
-- **Signal handling**: SIGTERM, SIGINT, SIGBREAK support
-- **Resource cleanup**: Automatic handler cleanup on exit
-- **No memory leaks**: Proper resource management
-
-#### 📈 **Benchmark Results**
-```
-Full filesystem traversal (1,587 dirs, 19,882 files):
-  Cold: 29.00s
-  Warm: 0.104s
-  Speedup: 279x
-
-Single folder access:
-  Cold: 7.2s
-  Warm: 0.000s
-  Speedup: 235,877x
-```
-
 ## 🚀 Features
 
 ### Supported Image Formats
@@ -440,6 +397,39 @@ pytest tests/
 - libvmdk-python>=20231123 - VMDK support
 - pyfsntfs>=20231123 - NTFS support
 - pyfsfat>=20231123 - FAT support
+
+## 📋 Changelog
+
+### v0.2.0 - Major Performance Improvements
+**Performance:**
+- Global handler caching with 279x - 235,000x speedup
+- Increased cache capacity to 500,000 entries with LRU eviction
+- Parallel processing with ThreadPoolExecutor
+- Cache statistics monitoring (hits, misses, hit rates)
+
+**Installation:**
+- Converted to absolute imports for better package installation
+- Added entry point: `disk-forensics-mcp-server`
+- One-line install: `pip install -e .`
+
+**Reliability:**
+- Graceful shutdown with SIGTERM/SIGINT/SIGBREAK handling
+- Automatic resource cleanup
+- Proper memory management
+
+**Benchmarks:**
+```
+Full traversal (1,587 dirs): 29s → 0.1s (279x)
+Single folder: 7.2s → 0.000s (235,877x)
+```
+
+### v0.1.0 - Initial Release
+- Support for RAW, E01, VMDK, VHD/VHDX, AD1 formats
+- Disk analysis: analyze_disk_image, list_partitions, calculate_hash
+- Filesystem tools: list_files, get_file_metadata, read_file, extract_file
+- Directory tree traversal and search tools
+- Deleted file scanning
+- Basic caching with 187x speedup
 
 ## 📝 License
 
