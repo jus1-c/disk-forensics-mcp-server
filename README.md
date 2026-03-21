@@ -41,7 +41,7 @@ MCP Server for disk forensics analysis, supporting multiple image formats includ
 ### Install from source
 
 ```bash
-cd forensics-mcp-server
+cd disk-forensics-mcp-server
 pip install -e .
 ```
 
@@ -67,8 +67,8 @@ Add to your MCP settings file:
   "mcpServers": {
     "disk-forensics": {
       "command": "python",
-      "args": ["-m", "forensics_mcp_server.server.mcp_server"],
-      "cwd": "C:\\Users\\Administrator\\Documents\\Python\\Forensics_Tools\\forensics-mcp-server",
+      "args": ["-m", "src.server.mcp_server"],
+      "cwd": "/path/to/disk-forensics-mcp-server",
       "disabled": false,
       "autoApprove": []
     }
@@ -82,8 +82,21 @@ Add to your MCP settings file:
   "mcpServers": {
     "disk-forensics": {
       "command": "python",
-      "args": ["-m", "forensics_mcp_server.server.mcp_server"],
-      "cwd": "C:\\Users\\Administrator\\Documents\\Python\\Forensics_Tools\\forensics-mcp-server"
+      "args": ["-m", "src.server.mcp_server"],
+      "cwd": "/path/to/disk-forensics-mcp-server"
+    }
+  }
+}
+```
+
+> **Note:** Replace `/path/to/disk-forensics-mcp-server` with the actual path to your cloned repository.
+
+**Note:** After installing the package with `pip install -e .`, you can also use:
+```json
+{
+  "mcpServers": {
+    "disk-forensics": {
+      "command": "disk-forensics-mcp-server"
     }
   }
 }
@@ -288,19 +301,39 @@ Scan for deleted files.
 ## 📁 Project Structure
 
 ```
-forensics-mcp-server/
+disk-forensics-mcp-server/
 ├── src/
-│   └── forensics_mcp_server/
-│       ├── handlers/       # Image format handlers (RAW, E01, VMDK, VHD, AD1)
-│       ├── models/         # Pydantic schemas
-│       ├── server/         # MCP server implementation
-│       ├── tools/          # Forensics tools
-│       │   ├── disk_tools/     # Disk analysis tools
-│       │   ├── filesystem_tools/  # Filesystem browsing tools
-│       │   └── hash_tools/     # Hash calculation tools
-│       └── utils/          # Utilities (image detector)
+│   ├── handlers/           # Image format handlers (RAW, E01, VMDK, VHD, AD1)
+│   │   ├── base_handler.py
+│   │   ├── raw_handler.py
+│   │   ├── e01_handler.py
+│   │   ├── vmdk_handler.py
+│   │   ├── vhd_handler.py
+│   │   └── ad1_handler.py
+│   ├── models/             # Pydantic schemas
+│   │   └── schemas.py
+│   ├── server/             # MCP server implementation
+│   │   └── mcp_server.py
+│   ├── tools/              # Forensics tools
+│   │   ├── disk_tools/     # Disk analysis tools
+│   │   │   ├── analyze_image.py
+│   │   │   └── list_partitions.py
+│   │   ├── filesystem_tools/  # Filesystem browsing tools
+│   │   │   ├── list_files.py
+│   │   │   ├── read_file.py
+│   │   │   ├── extract_file.py
+│   │   │   ├── get_directory_tree.py
+│   │   │   ├── get_file_metadata.py
+│   │   │   ├── search_by_extension.py
+│   │   │   ├── search_by_timestamp.py
+│   │   │   └── scan_deleted_files.py
+│   │   └── hash_tools/     # Hash calculation tools
+│   │       └── calculate_hash.py
+│   └── utils/              # Utilities (image detector)
+│       └── image_detector.py
 ├── pyproject.toml          # Project configuration
-└── README.md              # This file
+├── .gitignore              # Git ignore rules
+└── README.md               # This file
 ```
 
 ## 🧪 Testing
