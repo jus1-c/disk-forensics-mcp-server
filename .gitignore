@@ -62,6 +62,10 @@ htmlcov/
 # Test files at root
 test_*.py
 /test_images/
+tests/
+
+# Benchmark/test outputs
+benchmark_*.py
 
 # Logs
 *.log
