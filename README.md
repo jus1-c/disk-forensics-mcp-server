@@ -2,6 +2,49 @@
 
 MCP Server for disk forensics analysis, supporting multiple image formats including RAW, E01, VMDK, VHD/VHDX, and AD1.
 
+## 🆕 Recent Updates
+
+### v0.2.0 - Major Performance Improvements
+
+#### 🚀 **Global Handler Caching** (NEW)
+- **Persistent cache** across all tool calls - survives entire MCP session
+- **Massive speedup**: 279x - 235,000x faster on cached data
+- **Real-world performance**: 29s → 0.1s for full filesystem traversal
+- **Cache statistics**: Monitor hits, misses, and hit rates
+
+#### 📊 **Enhanced Cache Management** (NEW)
+- **Increased capacity**: 500,000 cache entries (50x increase)
+- **LRU eviction**: Automatically removes oldest entries when full
+- **Intelligent batching**: Removes 5,000 entries at a time for efficiency
+
+#### ⚡ **Parallel Processing** (NEW)
+- **ThreadPoolExecutor**: Process directories in parallel
+- **Optimal workers**: Auto-adjusts based on CPU cores (max 4)
+- **Speed boost**: 2-4x faster for recursive operations
+
+#### 🔧 **Easy Installation** (IMPROVED)
+- **Absolute imports**: No more relative import issues
+- **Entry point**: Simple `disk-forensics-mcp-server` command
+- **One-line install**: `pip install -e .`
+
+#### 🛡️ **Graceful Shutdown** (NEW)
+- **Signal handling**: SIGTERM, SIGINT, SIGBREAK support
+- **Resource cleanup**: Automatic handler cleanup on exit
+- **No memory leaks**: Proper resource management
+
+#### 📈 **Benchmark Results**
+```
+Full filesystem traversal (1,587 dirs, 19,882 files):
+  Cold: 29.00s
+  Warm: 0.104s
+  Speedup: 279x
+
+Single folder access:
+  Cold: 7.2s
+  Warm: 0.000s
+  Speedup: 235,877x
+```
+
 ## 🚀 Features
 
 ### Supported Image Formats
@@ -27,10 +70,13 @@ MCP Server for disk forensics analysis, supporting multiple image formats includ
 - ✅ **scan_deleted_files** - Recover deleted files
 
 ### Performance Features
-- ✅ **Intelligent Caching** - 187x speedup for repeated operations
-- ✅ **Partition Caching** - Filesystem handles cached per partition
-- ✅ **File Listing Cache** - Directory listings cached
-- ✅ **Metadata Cache** - File metadata cached
+- ✅ **Global Handler Cache** - Persistent across entire MCP session (NEW)
+- ✅ **Massive Speedup** - 279x to 235,000x faster with caching (NEW)
+- ✅ **Large Cache Capacity** - 500,000 entries with LRU eviction (NEW)
+- ✅ **Parallel Processing** - Multi-threaded directory traversal (NEW)
+- ✅ **Intelligent Caching** - Automatic cache management
+- ✅ **Cache Statistics** - Monitor hits, misses, hit rates (NEW)
+- ✅ **Graceful Shutdown** - Proper resource cleanup (NEW)
 
 ## 📦 Installation
 
@@ -61,7 +107,40 @@ pip install -e ".[forensics,dev]"
 
 Add to your MCP settings file:
 
-**Cline:**
+### Option 1: Using Entry Point (Recommended)
+
+After installing with `pip install -e .`:
+
+**Claude Desktop / Cline / OpenCode:**
+```json
+{
+  "mcpServers": {
+    "disk-forensics": {
+      "command": "disk-forensics-mcp-server",
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+**OpenCode Config (opencode.json):**
+```json
+{
+  "mcp": {
+    "forensics": {
+      "type": "local",
+      "command": ["disk-forensics-mcp-server"],
+      "enabled": true,
+      "timeout": 150000
+    }
+  }
+}
+```
+
+### Option 2: Using Python Module
+
+**Claude Desktop / Cline:**
 ```json
 {
   "mcpServers": {
@@ -71,32 +150,6 @@ Add to your MCP settings file:
       "cwd": "/path/to/disk-forensics-mcp-server",
       "disabled": false,
       "autoApprove": []
-    }
-  }
-}
-```
-
-**Claude Desktop:**
-```json
-{
-  "mcpServers": {
-    "disk-forensics": {
-      "command": "python",
-      "args": ["-m", "src.server.mcp_server"],
-      "cwd": "/path/to/disk-forensics-mcp-server"
-    }
-  }
-}
-```
-
-> **Note:** Replace `/path/to/disk-forensics-mcp-server` with the actual path to your cloned repository.
-
-**Note:** After installing the package with `pip install -e .`, you can also use:
-```json
-{
-  "mcpServers": {
-    "disk-forensics": {
-      "command": "disk-forensics-mcp-server"
     }
   }
 }
@@ -336,7 +389,27 @@ disk-forensics-mcp-server/
 └── README.md               # This file
 ```
 
-## 🧪 Testing
+## 🧪 Testing & Benchmarking
+
+### Performance Benchmarks
+
+Run benchmarks to test cache performance:
+
+```bash
+# Basic cache benchmark
+python tests/benchmark_cache.py
+
+# Deep directory traversal
+python tests/benchmark_cache_deep.py
+
+# Full recursive scan
+python tests/benchmark_deep_recursive.py
+```
+
+**Expected Results:**
+- Cold cache: ~7-29 seconds (first access)
+- Warm cache: ~0.0001 seconds (from cache)
+- Speedup: 279x - 235,000x
 
 ### Create a test image
 ```bash
