@@ -26,8 +26,8 @@ async def search_by_extension(input_data: Dict[str, Any]) -> Dict[str, Any]:
         # Validate input
         input_model = SearchByExtensionInput(**input_data)
         
-        # Get handler
-        handler = ImageDetector.get_handler(input_model.image_path)
+        # Get handler from cache
+        handler = ImageDetector.get_handler_cached(input_model.image_path)
         
         if not handler:
             return ErrorOutput(
@@ -41,13 +41,12 @@ async def search_by_extension(input_data: Dict[str, Any]) -> Dict[str, Any]:
             extension = extension[1:]
         
         # Search recursively
-        with handler:
-            matches = await _search_recursive(
-                handler,
-                input_model.partition_offset,
-                input_model.path,
-                extension
-            )
+        matches = await _search_recursive(
+            handler,
+            input_model.partition_offset,
+            input_model.path,
+            extension
+        )
         
         # Build output
         output = SearchResultsOutput(
@@ -128,7 +127,7 @@ async def _search_recursive(
 # Tool definition for MCP
 tool_definition = {
     "name": "search_by_extension",
-    "description": "Search for files with a specific extension (e.g., 'txt', 'jpg', 'exe'). Recursively searches all subdirectories.",
+    "description": "Search for files with a specific extension (e.g., 'txt', 'jpg', 'exe'). Recursively searches all subdirectories. Uses caching for improved performance.",
     "inputSchema": {
         "type": "object",
         "properties": {

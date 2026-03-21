@@ -40,8 +40,8 @@ async def read_file_content(input_data: Dict[str, Any]) -> Dict[str, Any]:
         # Validate input
         input_model = ReadFileContentInput(**input_data)
         
-        # Get handler
-        handler = ImageDetector.get_handler(input_model.image_path)
+        # Get handler from cache
+        handler = ImageDetector.get_handler_cached(input_model.image_path)
         
         if not handler:
             return ErrorOutput(
@@ -50,11 +50,10 @@ async def read_file_content(input_data: Dict[str, Any]) -> Dict[str, Any]:
             ).model_dump()
         
         # Read file using handler's method
-        with handler:
-            content = handler.read_file(
-                partition_offset=input_model.partition_offset,
-                file_path=input_model.file_path
-            )
+        content = handler.read_file(
+            partition_offset=input_model.partition_offset,
+            file_path=input_model.file_path
+        )
         
         if content is None:
             return ErrorOutput(
@@ -121,7 +120,7 @@ async def read_file_content(input_data: Dict[str, Any]) -> Dict[str, Any]:
 # Tool definition for MCP
 tool_definition = {
     "name": "read_file_content",
-    "description": "Read content of a file from a partition. Returns text content or base64-encoded binary data. Automatically detects binary files.",
+    "description": "Read content of a file from a partition. Returns text content or base64-encoded binary data. Automatically detects binary files. Uses caching for improved performance.",
     "inputSchema": {
         "type": "object",
         "properties": {

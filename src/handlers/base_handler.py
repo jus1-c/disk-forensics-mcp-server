@@ -65,6 +65,9 @@ class ImageHandle(pytsk3.Img_Info):
 class BaseImageHandler(ABC):
     """Abstract base class for all image handlers with pytsk3 integration."""
 
+    MAX_CACHE_SIZE = 500000  # Increased: Maximum entries per cache (was 10000)
+    CACHE_EVICTION_BATCH = 5000  # Increased: Number of entries to remove when limit reached (was 100)
+
     def __init__(self, image_path: str):
         self.image_path = image_path
         self._size: Optional[int] = None
@@ -73,6 +76,12 @@ class BaseImageHandler(ABC):
         # Cache for file listings and metadata
         self._file_cache: Dict[str, List[FileInfo]] = {}
         self._metadata_cache: Dict[str, FileInfo] = {}
+        # Cache statistics
+        self._cache_hits = 0
+        self._cache_misses = 0
+        # Track access order for LRU eviction
+        self._file_cache_access: Dict[str, datetime] = {}
+        self._metadata_cache_access: Dict[str, datetime] = {}
 
     @property
     @abstractmethod
@@ -124,13 +133,64 @@ class BaseImageHandler(ABC):
                 return None
         return self._filesystems.get(partition_offset)
 
+    def _add_to_file_cache(self, cache_key: str, files: List[FileInfo]) -> None:
+        """Add to file cache with LRU eviction."""
+        # Check if we need to evict
+        if len(self._file_cache) >= self.MAX_CACHE_SIZE:
+            # Remove oldest entries
+            sorted_keys = sorted(
+                self._file_cache_access.keys(),
+                key=lambda k: self._file_cache_access[k]
+            )
+            for key in sorted_keys[:self.CACHE_EVICTION_BATCH]:
+                del self._file_cache[key]
+                del self._file_cache_access[key]
+        
+        # Add to cache
+        self._file_cache[cache_key] = files
+        self._file_cache_access[cache_key] = datetime.now()
+
+    def _add_to_metadata_cache(self, cache_key: str, file_info: FileInfo) -> None:
+        """Add to metadata cache with LRU eviction."""
+        # Check if we need to evict
+        if len(self._metadata_cache) >= self.MAX_CACHE_SIZE:
+            # Remove oldest entries
+            sorted_keys = sorted(
+                self._metadata_cache_access.keys(),
+                key=lambda k: self._metadata_cache_access[k]
+            )
+            for key in sorted_keys[:self.CACHE_EVICTION_BATCH]:
+                del self._metadata_cache[key]
+                del self._metadata_cache_access[key]
+        
+        # Add to cache
+        self._metadata_cache[cache_key] = file_info
+        self._metadata_cache_access[cache_key] = datetime.now()
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics."""
+        total = self._cache_hits + self._cache_misses
+        hit_rate = self._cache_hits / total if total > 0 else 0
+        return {
+            "file_cache_entries": len(self._file_cache),
+            "metadata_cache_entries": len(self._metadata_cache),
+            "cache_hits": self._cache_hits,
+            "cache_misses": self._cache_misses,
+            "hit_rate": f"{hit_rate:.2%}",
+            "max_cache_size": self.MAX_CACHE_SIZE,
+        }
+
     def list_files(self, partition_offset: int, path: str = "/") -> List[FileInfo]:
         """List files in a directory using pytsk3 (with caching)."""
         cache_key = f"{partition_offset}:{path}"
         
         # Check cache first
         if cache_key in self._file_cache:
+            self._cache_hits += 1
+            self._file_cache_access[cache_key] = datetime.now()  # Update access time
             return self._file_cache[cache_key]
+        
+        self._cache_misses += 1
         
         fs = self.get_filesystem(partition_offset)
         if not fs:
@@ -192,7 +252,7 @@ class BaseImageHandler(ABC):
             print(f"Error listing files: {e}")
         
         # Cache the result
-        self._file_cache[cache_key] = files
+        self._add_to_file_cache(cache_key, files)
         return files
 
     def get_file_metadata(self, partition_offset: int, file_path: str) -> Optional[FileInfo]:
@@ -201,7 +261,11 @@ class BaseImageHandler(ABC):
         
         # Check cache first
         if cache_key in self._metadata_cache:
+            self._cache_hits += 1
+            self._metadata_cache_access[cache_key] = datetime.now()  # Update access time
             return self._metadata_cache[cache_key]
+        
+        self._cache_misses += 1
         
         fs = self.get_filesystem(partition_offset)
         if not fs:
@@ -246,7 +310,7 @@ class BaseImageHandler(ABC):
             # file_obj.close()
             
             # Cache the result
-            self._metadata_cache[cache_key] = result
+            self._add_to_metadata_cache(cache_key, result)
             return result
             
         except Exception as e:

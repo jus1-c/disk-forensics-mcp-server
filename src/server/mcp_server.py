@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""MCP Server for Disk Forensics Analysis."""
+"""MCP Server for Disk Forensics Analysis with persistent handler caching."""
 
 import asyncio
 import sys
+import signal
+import atexit
 from typing import Dict, Any
 
 from mcp.server import Server
@@ -25,6 +27,10 @@ from ..tools.filesystem_tools.scan_deleted_files import scan_deleted_files, tool
 
 # Import hash tools
 from ..tools.hash_tools.calculate_hash import calculate_hash, tool_definition as hash_tool
+
+# Import cache utilities
+from ..utils.image_detector import ImageDetector
+from ..utils.parallel_utils import cleanup_parallel_processing
 
 
 # Tool registry
@@ -80,7 +86,7 @@ TOOLS: Dict[str, Dict[str, Any]] = {
 
 
 class ForensicsMCPServer:
-    """MCP Server for disk forensics."""
+    """MCP Server for disk forensics with persistent handler caching."""
 
     def __init__(self):
         self.server = Server(
@@ -88,6 +94,7 @@ class ForensicsMCPServer:
             "0.2.0",
         )
         self._setup_handlers()
+        self._setup_shutdown_handler()
 
     def _setup_handlers(self) -> None:
         """Setup MCP request handlers."""
@@ -143,6 +150,36 @@ class ForensicsMCPServer:
                         text=error_text
                     )
                 ]
+
+    def _setup_shutdown_handler(self) -> None:
+        """Setup cleanup on server shutdown."""
+        # Register atexit handler
+        atexit.register(self._cleanup)
+        
+        # Register signal handlers
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
+        
+        # On Windows, also handle these signals
+        if sys.platform == "win32":
+            signal.signal(signal.SIGBREAK, self._signal_handler)  # Ctrl+Break
+
+    def _signal_handler(self, signum: int, frame: Any) -> None:
+        """Handle shutdown signals."""
+        import signal
+        signal_name = signal.Signals(signum).name
+        print(f"\nReceived {signal_name}, shutting down gracefully...")
+        self._cleanup()
+        sys.exit(0)
+
+    def _cleanup(self) -> None:
+        """Cleanup all cached handlers and parallel resources on shutdown."""
+        try:
+            ImageDetector.invalidate_handler()
+            cleanup_parallel_processing()
+            print("All handlers and resources cleaned up successfully")
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
 
     async def run(self) -> None:
         """Run the server."""

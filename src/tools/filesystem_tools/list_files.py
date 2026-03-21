@@ -15,7 +15,7 @@ async def list_files(input_data: Dict[str, Any]) -> Dict[str, Any]:
     """List files in a directory within a partition.
     
     This tool uses pytsk3 to browse the filesystem and list files
-    in the specified directory.
+    in the specified directory. Uses persistent caching for improved performance.
     
     Args:
         input_data: Dictionary containing 'image_path', 'partition_offset', 'path'
@@ -27,8 +27,8 @@ async def list_files(input_data: Dict[str, Any]) -> Dict[str, Any]:
         # Validate input
         input_model = ListFilesInput(**input_data)
         
-        # Get handler
-        handler = ImageDetector.get_handler(input_model.image_path)
+        # Get handler from cache (creates new if not exists)
+        handler = ImageDetector.get_handler_cached(input_model.image_path)
         
         if not handler:
             return ErrorOutput(
@@ -36,12 +36,11 @@ async def list_files(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 code="UNSUPPORTED_FORMAT"
             ).model_dump()
         
-        # List files using handler's method
-        with handler:
-            files = handler.list_files(
-                partition_offset=input_model.partition_offset,
-                path=input_model.path
-            )
+        # List files using handler's method (cached internally)
+        files = handler.list_files(
+            partition_offset=input_model.partition_offset,
+            path=input_model.path
+        )
         
         # Convert to output format
         file_entries = []
@@ -84,7 +83,7 @@ async def list_files(input_data: Dict[str, Any]) -> Dict[str, Any]:
 # Tool definition for MCP
 tool_definition = {
     "name": "list_files",
-    "description": "List files and directories in a partition. Uses pytsk3 to browse NTFS, FAT, ext2/3/4, and other filesystems.",
+    "description": "List files and directories in a partition. Uses pytsk3 to browse NTFS, FAT, ext2/3/4, and other filesystems with persistent caching for improved performance.",
     "inputSchema": {
         "type": "object",
         "properties": {

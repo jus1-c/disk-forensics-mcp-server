@@ -40,8 +40,8 @@ async def extract_file(input_data: Dict[str, Any]) -> Dict[str, Any]:
         # Validate input
         input_model = ExtractFileInput(**input_data)
         
-        # Get handler
-        handler = ImageDetector.get_handler(input_model.image_path)
+        # Get handler from cache
+        handler = ImageDetector.get_handler_cached(input_model.image_path)
         
         if not handler:
             return ErrorOutput(
@@ -50,11 +50,10 @@ async def extract_file(input_data: Dict[str, Any]) -> Dict[str, Any]:
             ).model_dump()
         
         # Read file using handler's method
-        with handler:
-            content = handler.read_file(
-                partition_offset=input_model.partition_offset,
-                file_path=input_model.file_path
-            )
+        content = handler.read_file(
+            partition_offset=input_model.partition_offset,
+            file_path=input_model.file_path
+        )
         
         if content is None:
             return ErrorOutput(
@@ -103,7 +102,7 @@ async def extract_file(input_data: Dict[str, Any]) -> Dict[str, Any]:
 # Tool definition for MCP
 tool_definition = {
     "name": "extract_file",
-    "description": "Extract a file from a partition to disk. Saves the file content to the specified output path.",
+    "description": "Extract a file from a partition to disk. Saves the file content to the specified output path. Uses caching for improved performance.",
     "inputSchema": {
         "type": "object",
         "properties": {

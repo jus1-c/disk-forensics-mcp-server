@@ -52,8 +52,6 @@ htmlcov/
 *.img
 *.E01
 *.e01
-*.ad1
-*.AD1
 *.vmdk
 *.VMDK
 *.vhd

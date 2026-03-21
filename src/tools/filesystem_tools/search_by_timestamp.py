@@ -45,8 +45,8 @@ async def search_by_timestamp(input_data: Dict[str, Any]) -> Dict[str, Any]:
         start_time = datetime.fromisoformat(start_time_str) if start_time_str else None
         end_time = datetime.fromisoformat(end_time_str) if end_time_str else None
         
-        # Get handler
-        handler = ImageDetector.get_handler(image_path)
+        # Get handler from cache
+        handler = ImageDetector.get_handler_cached(image_path)
         
         if not handler:
             return ErrorOutput(
@@ -55,15 +55,14 @@ async def search_by_timestamp(input_data: Dict[str, Any]) -> Dict[str, Any]:
             ).model_dump()
         
         # Search recursively
-        with handler:
-            matches = await _search_by_time(
-                handler,
-                partition_offset,
-                path,
-                start_time,
-                end_time,
-                timestamp_type
-            )
+        matches = await _search_by_time(
+            handler,
+            partition_offset,
+            path,
+            start_time,
+            end_time,
+            timestamp_type
+        )
         
         # Build output
         output = {

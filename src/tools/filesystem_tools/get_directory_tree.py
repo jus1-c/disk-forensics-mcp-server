@@ -25,8 +25,8 @@ async def get_directory_tree(input_data: Dict[str, Any]) -> Dict[str, Any]:
         # Validate input
         input_model = ListFilesInput(**input_data)
         
-        # Get handler
-        handler = ImageDetector.get_handler(input_model.image_path)
+        # Get handler from cache
+        handler = ImageDetector.get_handler_cached(input_model.image_path)
         
         if not handler:
             return ErrorOutput(
@@ -35,14 +35,13 @@ async def get_directory_tree(input_data: Dict[str, Any]) -> Dict[str, Any]:
             ).model_dump()
         
         # Build tree recursively
-        with handler:
-            tree = await _build_tree(
-                handler,
-                input_model.partition_offset,
-                input_model.path,
-                input_model.max_depth,
-                0
-            )
+        tree = await _build_tree(
+            handler,
+            input_model.partition_offset,
+            input_model.path,
+            input_model.max_depth,
+            0
+        )
         
         # Build output
         output = DirectoryTreeOutput(
@@ -137,7 +136,7 @@ async def _build_tree(
 # Tool definition for MCP
 tool_definition = {
     "name": "get_directory_tree",
-    "description": "Get hierarchical directory tree structure from a partition. Recursively traverses directories and returns a tree view similar to FTK Imager.",
+    "description": "Get hierarchical directory tree structure from a partition. Recursively traverses directories and returns a tree view similar to FTK Imager. Uses caching for improved performance.",
     "inputSchema": {
         "type": "object",
         "properties": {

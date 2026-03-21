@@ -1,8 +1,9 @@
-"""Image format detection utilities."""
+"""Image format detection utilities with global handler caching."""
 
 import os
 import re
-from typing import Optional, Type
+import threading
+from typing import Optional, Type, Dict, Any
 from ..handlers.base_handler import BaseImageHandler
 from ..handlers.raw_handler import RAWHandler
 from ..handlers.e01_handler import E01Handler
@@ -11,8 +12,13 @@ from ..handlers.vmdk_handler import VMDKHandler
 from ..handlers.vhd_handler import VHDHandler
 
 
+# Global registry - persistent across tool calls
+_handler_cache: Dict[str, BaseImageHandler] = {}
+_cache_lock = threading.Lock()
+
+
 class ImageDetector:
-    """Detect and instantiate appropriate image handlers."""
+    """Detect and instantiate appropriate image handlers with caching support."""
 
     # Registry of handlers
     HANDLERS: dict[str, Type[BaseImageHandler]] = {
@@ -160,7 +166,9 @@ class ImageDetector:
 
     @classmethod
     def get_handler(cls, image_path: str) -> Optional[BaseImageHandler]:
-        """Get the appropriate handler for an image file.
+        """Get the appropriate handler for an image file (non-cached).
+        
+        Use get_handler_cached() for caching support.
         
         Args:
             image_path: Path to the image file
@@ -175,6 +183,78 @@ class ImageDetector:
             return handler_class(image_path)
         
         return None
+
+    @classmethod
+    def get_handler_cached(cls, image_path: str) -> Optional[BaseImageHandler]:
+        """Get handler from global cache or create new one.
+        
+        This method maintains a global cache of handlers that persists
+        across tool calls, significantly improving performance for
+        repeated operations on the same image.
+        
+        Args:
+            image_path: Path to the image file
+            
+        Returns:
+            Instance of appropriate handler or None
+        """
+        global _handler_cache
+        
+        with _cache_lock:
+            if image_path not in _handler_cache:
+                handler = cls.get_handler(image_path)
+                if handler:
+                    handler.open()
+                    _handler_cache[image_path] = handler
+            return _handler_cache.get(image_path)
+
+    @classmethod
+    def invalidate_handler(cls, image_path: str = None) -> None:
+        """Close and remove handler(s) from cache.
+        
+        Args:
+            image_path: Path to specific image, or None to clear all
+        """
+        global _handler_cache
+        
+        with _cache_lock:
+            if image_path:
+                if image_path in _handler_cache:
+                    try:
+                        _handler_cache[image_path].close()
+                    except Exception:
+                        pass
+                    del _handler_cache[image_path]
+            else:
+                # Clear all handlers
+                for handler in list(_handler_cache.values()):
+                    try:
+                        handler.close()
+                    except Exception:
+                        pass
+                _handler_cache.clear()
+
+    @classmethod
+    def get_cached_handlers_info(cls) -> Dict[str, Any]:
+        """Get info about cached handlers for monitoring.
+        
+        Returns:
+            Dictionary with cache statistics
+        """
+        global _handler_cache
+        
+        with _cache_lock:
+            info = {}
+            for path, handler in _handler_cache.items():
+                try:
+                    info[path] = {
+                        "format": handler.format_name,
+                        "file_cache_size": len(handler._file_cache),
+                        "metadata_cache_size": len(handler._metadata_cache),
+                    }
+                except Exception:
+                    info[path] = {"error": "Failed to get info"}
+            return info
 
     @classmethod
     def register_handler(cls, format_name: str, handler_class: Type[BaseImageHandler]) -> None:

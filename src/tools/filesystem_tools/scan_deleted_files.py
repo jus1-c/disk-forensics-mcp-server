@@ -38,8 +38,8 @@ async def scan_deleted_files(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 code="MISSING_PARAMETER"
             ).model_dump()
         
-        # Get handler
-        handler = ImageDetector.get_handler(image_path)
+        # Get handler from cache
+        handler = ImageDetector.get_handler_cached(image_path)
         
         if not handler:
             return ErrorOutput(
@@ -48,13 +48,12 @@ async def scan_deleted_files(input_data: Dict[str, Any]) -> Dict[str, Any]:
             ).model_dump()
         
         # Scan for deleted files
-        with handler:
-            deleted_files = await _scan_deleted(
-                handler,
-                partition_offset,
-                path,
-                max_results
-            )
+        deleted_files = await _scan_deleted(
+            handler,
+            partition_offset,
+            path,
+            max_results
+        )
         
         # Build output
         output = {
