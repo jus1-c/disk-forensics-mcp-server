@@ -76,3 +76,4 @@ Thumbs.db
 
 # MCP config (local)
 mcp-config.json
+*.ad1
