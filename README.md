@@ -488,6 +488,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - [The Sleuth Kit](https://www.sleuthkit.org/) - Forensic toolkit
 - [pytsk3](https://github.com/py4n6/pytsk) - Python bindings for TSK
+- [pyad1](https://github.com/pcbje/pyad1) - AD1 (AccessData Format) parser - Used as reference for AD1 handler implementation
 - [Model Context Protocol](https://modelcontextprotocol.io/) - MCP specification
 - [python-mcp](https://github.com/modelcontextprotocol/python-sdk) - Python MCP SDK
 
