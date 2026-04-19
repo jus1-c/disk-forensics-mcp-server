@@ -19,6 +19,7 @@ from ..tools.disk_tools.list_partitions import list_partitions, tool_definition 
 from ..tools.filesystem_tools.list_files import list_files, tool_definition as list_files_tool
 from ..tools.filesystem_tools.read_file import read_file_content, tool_definition as read_file_tool
 from ..tools.filesystem_tools.extract_file import extract_file, tool_definition as extract_file_tool
+from ..tools.filesystem_tools.extract_directory import extract_directory, tool_definition as extract_directory_tool
 from ..tools.filesystem_tools.get_directory_tree import get_directory_tree, tool_definition as tree_tool
 from ..tools.filesystem_tools.get_file_metadata import get_file_metadata, tool_definition as metadata_tool
 from ..tools.filesystem_tools.search_by_extension import search_by_extension, tool_definition as ext_search_tool
@@ -56,6 +57,10 @@ TOOLS: Dict[str, Dict[str, Any]] = {
     "extract_file": {
         "definition": extract_file_tool,
         "handler": extract_file,
+    },
+    "extract_directory": {
+        "definition": extract_directory_tool,
+        "handler": extract_directory,
     },
     "get_directory_tree": {
         "definition": tree_tool,

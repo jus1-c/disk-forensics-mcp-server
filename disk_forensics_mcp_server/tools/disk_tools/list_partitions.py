@@ -11,8 +11,17 @@ from ...models.schemas import (
 )
 
 
-def _get_partition_type_str(part_type: int) -> str:
-    """Convert partition type to string."""
+def _get_partition_type_str(part_type: Any) -> str:
+    """Convert partition type metadata to string."""
+    if isinstance(part_type, bytes):
+        return part_type.decode("utf-8", errors="replace").strip("\x00 ")
+
+    if isinstance(part_type, str):
+        return part_type.strip("\x00 ")
+
+    if not isinstance(part_type, int):
+        return str(part_type)
+
     partition_types = {
         0x00: "Empty",
         0x01: "FAT12",
@@ -38,6 +47,29 @@ def _get_partition_type_str(part_type: int) -> str:
         0xEF: "EFI System",
     }
     return partition_types.get(part_type, f"Unknown (0x{part_type:02X})")
+
+
+def _get_volume_block_size(vol_info: pytsk3.Volume_Info) -> int:
+    """Best-effort volume block size lookup."""
+    vol_meta = getattr(vol_info, "info", None)
+    block_size = getattr(vol_meta, "block_size", None)
+    if isinstance(block_size, int) and block_size > 0:
+        return block_size
+    return 512
+
+
+def _handler_partitions_to_output(handler) -> List[Partition]:
+    """Convert handler-native partition info to tool output."""
+    return [
+        Partition(
+            offset=part.offset,
+            size=part.size,
+            type=part.type,
+            label=part.label,
+            filesystem=part.filesystem,
+        )
+        for part in handler.get_partitions()
+    ]
 
 
 def _detect_filesystem_with_tsk(handler, offset: int) -> str:
@@ -75,13 +107,19 @@ def _read_partitions_with_tsk(handler) -> List[Partition]:
         # Try to get volume info (partition table)
         try:
             vol_info = pytsk3.Volume_Info(img_handle)
+            block_size = _get_volume_block_size(vol_info)
             
-            for i, part in enumerate(vol_info):
+            for part in vol_info:
                 if part.len == 0:
                     continue
+
+                alloc_flag = getattr(pytsk3, "TSK_VS_PART_FLAG_ALLOC", None)
+                if alloc_flag is not None and hasattr(part, "flags"):
+                    if not (part.flags & alloc_flag):
+                        continue
                 
-                offset = part.start * 512  # Assuming 512-byte sectors
-                size = part.len * 512
+                offset = part.start * block_size
+                size = part.len * block_size
                 
                 # Detect filesystem
                 fs_type = _detect_filesystem_with_tsk(handler, offset)
@@ -92,25 +130,30 @@ def _read_partitions_with_tsk(handler) -> List[Partition]:
                     type=_get_partition_type_str(part.desc),
                     label=None,
                     filesystem=fs_type,
-                    index=i
                 ))
-            
-            vol_info.close()
-            
-        except Exception as e:
-            # No partition table found, treat entire image as single partition
-            size = handler.get_size()
-            fs_type = _detect_filesystem_with_tsk(handler, 0)
-            
-            partitions.append(Partition(
-                offset=0,
-                size=size,
-                type="Raw / No partition table",
-                label=None,
-                filesystem=fs_type,
-                index=0
-            ))
-        
+
+            if partitions:
+                return partitions
+
+        except Exception:
+            pass
+
+        partitions = _handler_partitions_to_output(handler)
+        if partitions:
+            return partitions
+
+        # No partition table found, treat entire image as single partition
+        size = handler.get_size()
+        fs_type = _detect_filesystem_with_tsk(handler, 0)
+
+        partitions.append(Partition(
+            offset=0,
+            size=size,
+            type="Raw / No partition table",
+            label=None,
+            filesystem=fs_type,
+        ))
+         
     except Exception as e:
         print(f"Error reading partitions with TSK: {e}")
     

@@ -76,6 +76,7 @@ class VMDKHandler(BaseImageHandler):
         self._vmdk_info: Optional[Dict[str, Any]] = None
         self._partitions: List[PartitionInfo] = []
         self._current_partition_offset: int = 0
+        self._file_objects: List[Any] = []
         
     @property
     def format_name(self) -> str:
@@ -129,61 +130,59 @@ class VMDKHandler(BaseImageHandler):
     
     def _detect_partitions(self) -> List[PartitionInfo]:
         """Detect partitions in the VMDK image."""
-        partitions = []
-        
         if not self._img_info:
-            return partitions
-        
+            return []
+
+        partitions: List[PartitionInfo] = []
+
         try:
-            # Try to read MBR from offset 0
-            mbr_data = self._img_info.read(0, 512)
-            
-            if len(mbr_data) >= 512 and mbr_data[510:512] == b'\x55\xaa':
-                # MBR found, parse partition table
-                for i in range(4):
-                    offset = 446 + (i * 16)
-                    entry = mbr_data[offset:offset+16]
-                    
-                    bootable = entry[0] == 0x80
-                    partition_type = entry[4]
-                    start_lba = int.from_bytes(entry[8:12], 'little')
-                    num_sectors = int.from_bytes(entry[12:16], 'little')
-                    
-                    if partition_type != 0 and num_sectors > 0:
-                        partition_offset = start_lba * 512
-                        
-                        # Try to identify filesystem type
-                        fs_type = self._identify_filesystem(partition_offset)
-                        
-                        partition = PartitionInfo(
-                            index=i + 1,
-                            offset=partition_offset,
-                            size=num_sectors * 512,
-                            type=self._get_partition_type_name(partition_type),
-                            filesystem=fs_type,
-                            label=f"Partition {i + 1}"
-                        )
-                        partitions.append(partition)
-            
-            # If no partitions found, check if there's a filesystem at offset 0
-            if not partitions:
-                fs_type = self._identify_filesystem(0)
-                if fs_type:
-                    # Single partition (whole disk is one filesystem)
-                    partition = PartitionInfo(
-                        index=1,
-                        offset=0,
-                        size=self._img_info.get_size(),
-                        type="Single Volume",
-                        filesystem=fs_type,
-                        label="Single Volume"
-                    )
-                    partitions.append(partition)
-                    
+            vol_info = pytsk3.Volume_Info(self._img_info)
+            block_size = getattr(getattr(vol_info, "info", None), "block_size", 512) or 512
+            alloc_flag = getattr(pytsk3, "TSK_VS_PART_FLAG_ALLOC", None)
+
+            for index, part in enumerate(vol_info, start=1):
+                if part.len == 0:
+                    continue
+
+                if alloc_flag is not None and hasattr(part, "flags"):
+                    if not (part.flags & alloc_flag):
+                        continue
+
+                offset = part.start * block_size
+                fs_type = None
+                try:
+                    fs_type = pytsk3.FS_Info(self._img_info, offset=offset).info.ftype
+                except Exception:
+                    pass
+
+                filesystem = {
+                    pytsk3.TSK_FS_TYPE_NTFS: "NTFS",
+                    pytsk3.TSK_FS_TYPE_FAT12: "FAT12",
+                    pytsk3.TSK_FS_TYPE_FAT16: "FAT16",
+                    pytsk3.TSK_FS_TYPE_FAT32: "FAT32",
+                    pytsk3.TSK_FS_TYPE_EXT2: "ext2",
+                    pytsk3.TSK_FS_TYPE_EXT3: "ext3",
+                    pytsk3.TSK_FS_TYPE_EXT4: "ext4",
+                    pytsk3.TSK_FS_TYPE_EXFAT: "exFAT",
+                }.get(fs_type)
+
+                part_type = part.desc.decode("utf-8", errors="replace").strip("\x00 ")
+                partitions.append(PartitionInfo(
+                    index=index,
+                    offset=offset,
+                    size=part.len * block_size,
+                    type=part_type or f"Partition {index}",
+                    filesystem=filesystem,
+                    label=f"Partition {index}",
+                ))
+
+            if partitions:
+                return partitions
+
         except Exception:
             pass
-        
-        return partitions
+
+        return super().get_partitions()
     
     def _identify_filesystem(self, offset: int) -> Optional[str]:
         """Try to identify filesystem type at given offset."""
@@ -263,16 +262,20 @@ class VMDKHandler(BaseImageHandler):
             if self._vmdk_info.get('is_stream_optimized') and HAS_PYVMDK:
                 try:
                     # Use pyvmdk for streamOptimized VMDK
-                    # Use file object approach to avoid path issues
                     abs_path = os.path.abspath(self.image_path)
                     file_obj = open(abs_path, 'rb')
                     vmdk_handle = pyvmdk.handle()
                     vmdk_handle.open_file_object(file_obj)
-                    vmdk_handle.open_extent_data_files_as_file_objects(file_obj)
+                    vmdk_handle.open_extent_data_files_as_file_objects([file_obj])
+                    self._file_objects = [file_obj]
                     
                     # Wrap with our wrapper class
                     self._img_info = VMDKImgInfoWrapper(vmdk_handle)
                 except Exception as pyvmdk_error:
+                    try:
+                        file_obj.close()
+                    except Exception:
+                        pass
                     # Fallback to pytsk3 if pyvmdk fails
                     # (e.g., extent file name mismatch in streamOptimized VMDK)
                     print(f"Warning: pyvmdk failed to open streamOptimized VMDK")
@@ -307,6 +310,13 @@ class VMDKHandler(BaseImageHandler):
         self._img_info = None
         self._partitions = []
         self._current_partition_offset = 0
+
+        for file_obj in self._file_objects:
+            try:
+                file_obj.close()
+            except Exception:
+                pass
+        self._file_objects = []
     
     def read(self, offset: int, size: int) -> bytes:
         """Read data from the VMDK image."""
@@ -356,123 +366,16 @@ class VMDKHandler(BaseImageHandler):
         return False
     
     def list_files(self, partition_offset: int = 0, path: str = "/") -> List[FileInfo]:
-        """List files in a directory (with caching)."""
-        cache_key = f"{partition_offset}:{path}"
-        if cache_key in self._file_cache:
-            return self._file_cache[cache_key]
-        
-        files = []
-        
-        if not self._fs_info:
-            return files
-        
-        # If partition_offset is specified and different from current, switch
-        if partition_offset != self._current_partition_offset:
-            if not self._open_filesystem(partition_offset):
-                return files
-        
-        try:
-            dir_obj = self._fs_info.open_dir(path)
-            
-            for entry in dir_obj:
-                name = entry.info.name.name.decode('utf-8', errors='ignore')
-                
-                if name in ['.', '..']:
-                    continue
-                
-                is_dir = False
-                size = 0
-                inode = None
-                
-                if entry.info.meta:
-                    is_dir = entry.info.meta.type == pytsk3.TSK_FS_META_TYPE_DIR
-                    size = entry.info.meta.size
-                    inode = entry.info.meta.addr
-                
-                file_info = FileInfo(
-                    name=name,
-                    path=f"{path}/{name}" if path != "/" else f"/{name}",
-                    size=size,
-                    is_directory=is_dir,
-                    is_deleted=False,
-                    created=None,
-                    modified=None,
-                    accessed=None,
-                    inode=inode
-                )
-                files.append(file_info)
-                
-        except Exception:
-            pass
-        
-        # Cache the result
-        self._file_cache[cache_key] = files
-        return files
+        """List files in a directory using the shared pytsk3 path."""
+        return super().list_files(partition_offset, path)
     
     def get_file_metadata(self, partition_offset: int, file_path: str) -> Optional[FileInfo]:
-        """Get metadata for a specific file (with caching)."""
-        cache_key = f"{partition_offset}:{file_path}"
-        if cache_key in self._metadata_cache:
-            return self._metadata_cache[cache_key]
-        
-        if not self._fs_info:
-            return None
-        
-        # If partition_offset is specified and different from current, switch
-        if partition_offset != self._current_partition_offset:
-            if not self._open_filesystem(partition_offset):
-                return None
-        
-        try:
-            file_obj = self._fs_info.open(file_path)
-            
-            if not file_obj.info.meta:
-                return None
-            
-            is_dir = file_obj.info.meta.type == pytsk3.TSK_FS_META_TYPE_DIR
-            
-            result = FileInfo(
-                name=file_path.split('/')[-1],
-                path=file_path,
-                size=file_obj.info.meta.size,
-                is_directory=is_dir,
-                is_deleted=False,
-                created=None,
-                modified=None,
-                accessed=None,
-                inode=file_obj.info.meta.addr
-            )
-            
-            # Cache the result
-            self._metadata_cache[cache_key] = result
-            return result
-            
-        except Exception:
-            return None
+        """Get file metadata using the shared pytsk3 path."""
+        return super().get_file_metadata(partition_offset, file_path)
     
     def read_file(self, partition_offset: int, file_path: str) -> Optional[bytes]:
-        """Read content of a specific file."""
-        if not self._fs_info:
-            return None
-        
-        # If partition_offset is specified and different from current, switch
-        if partition_offset != self._current_partition_offset:
-            if not self._open_filesystem(partition_offset):
-                return None
-        
-        try:
-            file_obj = self._fs_info.open(file_path)
-            
-            if file_obj.info.meta.type == pytsk3.TSK_FS_META_TYPE_DIR:
-                return None
-            
-            size = file_obj.info.meta.size
-            content = file_obj.read_random(0, size)
-            
-            return content
-            
-        except Exception:
-            return None
+        """Read file content using the shared pytsk3 path."""
+        return super().read_file(partition_offset, file_path)
     
     def get_image_handle(self):
         """Get pytsk3 image handle for filesystem operations."""

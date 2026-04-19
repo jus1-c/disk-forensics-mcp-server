@@ -221,7 +221,26 @@ Extract a file from the image to a destination path.
 }
 ```
 
-### 7. get_directory_tree
+### 7. extract_directory
+Extract a directory from the image to a destination path while preserving relative paths.
+
+**Parameters:**
+- `image_path`: Absolute path to disk image
+- `partition_offset`: Offset of the partition in bytes
+- `directory_path`: Path to the directory within the partition
+- `output_path`: Path to save the extracted directory
+
+**Example:**
+```json
+{
+  "image_path": "/home/user/evidence/image.raw",
+  "partition_offset": 1048576,
+  "directory_path": "/Windows/System32/config",
+  "output_path": "/home/user/extracted/config"
+}
+```
+
+### 8. get_directory_tree
 Get complete directory tree structure.
 
 **Parameters:**
@@ -240,7 +259,7 @@ Get complete directory tree structure.
 }
 ```
 
-### 8. search_by_extension
+### 9. search_by_extension
 Search files by extension.
 
 **Parameters:**
@@ -259,7 +278,7 @@ Search files by extension.
 }
 ```
 
-### 9. search_by_timestamp
+### 10. search_by_timestamp
 Search files by date range.
 
 **Parameters:**
@@ -282,7 +301,7 @@ Search files by date range.
 }
 ```
 
-### 10. scan_deleted_files
+### 11. scan_deleted_files
 Scan for deleted files.
 
 **Parameters:**
@@ -301,7 +320,7 @@ Scan for deleted files.
 }
 ```
 
-### 11. calculate_hash
+### 12. calculate_hash
 Calculate hash (MD5, SHA1, or SHA256) of a disk image.
 
 **Parameters:**
