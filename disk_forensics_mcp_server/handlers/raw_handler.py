@@ -2,6 +2,8 @@
 
 import os
 import re
+import bisect
+import pytsk3
 from typing import List, Optional, BinaryIO
 from .base_handler import BaseImageHandler, ImageInfo, PartitionInfo
 
@@ -14,6 +16,7 @@ class RAWHandler(BaseImageHandler):
         self._segments: List[str] = []
         self._handles: List[BinaryIO] = []
         self._segment_sizes: List[int] = []
+        self._segment_offsets: List[int] = []
         self._current_segment: int = 0
 
     @property
@@ -92,6 +95,7 @@ class RAWHandler(BaseImageHandler):
             handle = open(segment_path, 'rb')
             self._handles.append(handle)
             self._segment_sizes.append(os.path.getsize(segment_path))
+        self._build_segment_offsets()
 
     def close(self) -> None:
         """Close all segment handles."""
@@ -103,15 +107,36 @@ class RAWHandler(BaseImageHandler):
                 handle.close()
         self._handles = []
         self._segment_sizes = []
+        self._segment_offsets = []
+        self._image_handle = None
+
+    def _build_segment_offsets(self) -> None:
+        """Build cumulative offsets for fast split-image lookup."""
+        offsets = []
+        current_offset = 0
+        for size in self._segment_sizes:
+            offsets.append(current_offset)
+            current_offset += size
+        self._segment_offsets = offsets
 
     def _get_segment_for_offset(self, offset: int) -> tuple[int, int]:
         """Get the segment index and local offset for a global offset."""
-        current_offset = 0
-        for i, size in enumerate(self._segment_sizes):
-            if offset < current_offset + size:
-                return i, offset - current_offset
-            current_offset += size
+        if not self._segment_offsets:
+            self._build_segment_offsets()
+
+        segment_idx = bisect.bisect_right(self._segment_offsets, offset) - 1
+        if 0 <= segment_idx < len(self._segment_sizes):
+            local_offset = offset - self._segment_offsets[segment_idx]
+            if local_offset < self._segment_sizes[segment_idx]:
+                return segment_idx, local_offset
         raise ValueError(f"Offset {offset} exceeds image size")
+
+    def _read_from_handle(self, handle: BinaryIO, offset: int, size: int) -> bytes:
+        """Read from a handle without mutating shared seek position when possible."""
+        if hasattr(os, "pread"):
+            return os.pread(handle.fileno(), size, offset)
+        handle.seek(offset)
+        return handle.read(size)
 
     def read(self, offset: int, size: int) -> bytes:
         """Read data from the image at the specified offset."""
@@ -133,8 +158,7 @@ class RAWHandler(BaseImageHandler):
             segment_remaining = self._segment_sizes[segment_idx] - local_offset
             to_read = min(remaining, segment_remaining)
 
-            handle.seek(local_offset)
-            data = handle.read(to_read)
+            data = self._read_from_handle(handle, local_offset, to_read)
             if not data:
                 break
 
@@ -151,6 +175,7 @@ class RAWHandler(BaseImageHandler):
             self._segment_sizes = [
                 os.path.getsize(seg) for seg in self._segments
             ]
+            self._build_segment_offsets()
         return sum(self._segment_sizes)
 
     def get_info(self) -> ImageInfo:
@@ -179,3 +204,15 @@ class RAWHandler(BaseImageHandler):
     def get_segments(self) -> List[str]:
         """Get list of segment file paths."""
         return self._segments.copy()
+
+    def get_image_handle(self):
+        """Use pytsk3's native RAW reader for single-file images."""
+        if not self._segments:
+            self._segments = self._detect_split_pattern()
+
+        if len(self._segments) == 1:
+            if self._image_handle is None:
+                self._image_handle = pytsk3.Img_Info(self._segments[0])
+            return self._image_handle
+
+        return super().get_image_handle()

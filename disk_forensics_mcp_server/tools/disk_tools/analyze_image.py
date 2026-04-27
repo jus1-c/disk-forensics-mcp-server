@@ -26,8 +26,8 @@ async def analyze_disk_image(input_data: Dict[str, Any]) -> Dict[str, Any]:
         # Validate input
         input_model = AnalyzeDiskImageInput(**input_data)
         
-        # Detect format and get handler
-        handler = ImageDetector.get_handler(input_model.image_path)
+        # Detect format and get cached handler so repeated tool calls stay warm.
+        handler = ImageDetector.get_handler_cached(input_model.image_path)
         
         if not handler:
             return ErrorOutput(
@@ -35,9 +35,7 @@ async def analyze_disk_image(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 code="UNSUPPORTED_FORMAT"
             ).model_dump()
         
-        # Get image info
-        with handler:
-            info = handler.get_info()
+        info = handler.get_info()
         
         # Build output
         output = DiskImageInfo(

@@ -48,14 +48,12 @@ async def extract_file(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 message=f"Unsupported image format or file not found: {input_model.image_path}",
                 code="UNSUPPORTED_FORMAT"
             ).model_dump()
-        
-        # Read file using handler's method
-        content = handler.read_file(
+
+        metadata = handler.get_file_metadata(
             partition_offset=input_model.partition_offset,
-            file_path=input_model.file_path
+            file_path=input_model.file_path,
         )
-        
-        if content is None:
+        if metadata is None or metadata.is_directory:
             return ErrorOutput(
                 message=f"File not found or is a directory: {input_model.file_path}",
                 code="FILE_NOT_FOUND"
@@ -66,17 +64,22 @@ async def extract_file(input_data: Dict[str, Any]) -> Dict[str, Any]:
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
         
-        # Write file to disk
+        bytes_written = 0
         with open(input_model.output_path, 'wb') as f:
-            f.write(content)
+            for chunk in handler.iter_file_chunks(
+                input_model.partition_offset,
+                input_model.file_path,
+            ):
+                f.write(chunk)
+                bytes_written += len(chunk)
         
         # Build output
         output = ExtractFileOutput(
             success=True,
             source_path=input_model.file_path,
             output_path=input_model.output_path,
-            size=len(content),
-            message=f"Successfully extracted {len(content)} bytes to {input_model.output_path}"
+            size=bytes_written,
+            message=f"Successfully extracted {bytes_written} bytes to {input_model.output_path}"
         )
         
         return output.model_dump()

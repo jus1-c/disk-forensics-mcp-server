@@ -48,11 +48,22 @@ async def read_file_content(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 message=f"Unsupported image format or file not found: {input_model.image_path}",
                 code="UNSUPPORTED_FORMAT"
             ).model_dump()
-        
-        # Read file using handler's method
+
+        metadata = handler.get_file_metadata(
+            partition_offset=input_model.partition_offset,
+            file_path=input_model.file_path,
+        )
+        if metadata is not None and metadata.is_directory:
+            return ErrorOutput(
+                message=f"File not found or is a directory: {input_model.file_path}",
+                code="FILE_NOT_FOUND"
+            ).model_dump()
+
+        # Read at most max_size instead of buffering the whole file first.
         content = handler.read_file(
             partition_offset=input_model.partition_offset,
-            file_path=input_model.file_path
+            file_path=input_model.file_path,
+            max_size=input_model.max_size,
         )
         
         if content is None:
@@ -61,12 +72,7 @@ async def read_file_content(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 code="FILE_NOT_FOUND"
             ).model_dump()
         
-        # Limit size
-        if len(content) > input_model.max_size:
-            content = content[:input_model.max_size]
-            truncated = True
-        else:
-            truncated = False
+        truncated = metadata is not None and metadata.size > input_model.max_size
         
         # Check if binary
         is_binary = _is_binary_content(content)

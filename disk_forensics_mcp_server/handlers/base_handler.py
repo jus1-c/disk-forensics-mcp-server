@@ -3,6 +3,7 @@
 import os
 import pytsk3
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from typing import Optional, List, Dict, Any, Iterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -67,21 +68,20 @@ class BaseImageHandler(ABC):
 
     MAX_CACHE_SIZE = 500000  # Increased: Maximum entries per cache (was 10000)
     CACHE_EVICTION_BATCH = 5000  # Increased: Number of entries to remove when limit reached (was 100)
+    DEFAULT_READ_CHUNK_SIZE = 1024 * 1024
 
     def __init__(self, image_path: str):
         self.image_path = image_path
         self._size: Optional[int] = None
         self._image_handle: Optional[ImageHandle] = None
         self._filesystems: Dict[int, pytsk3.FS_Info] = {}
+        self._partitions_cache: Optional[List[PartitionInfo]] = None
         # Cache for file listings and metadata
-        self._file_cache: Dict[str, List[FileInfo]] = {}
-        self._metadata_cache: Dict[str, FileInfo] = {}
+        self._file_cache: OrderedDict[str, List[FileInfo]] = OrderedDict()
+        self._metadata_cache: OrderedDict[str, FileInfo] = OrderedDict()
         # Cache statistics
         self._cache_hits = 0
         self._cache_misses = 0
-        # Track access order for LRU eviction
-        self._file_cache_access: Dict[str, datetime] = {}
-        self._metadata_cache_access: Dict[str, datetime] = {}
 
     @property
     @abstractmethod
@@ -100,6 +100,10 @@ class BaseImageHandler(ABC):
         # Clear caches
         self._file_cache.clear()
         self._metadata_cache.clear()
+        self._filesystems.clear()
+        self._partitions_cache = None
+        if hasattr(self, "_partition_tool_cache"):
+            delattr(self, "_partition_tool_cache")
 
     @abstractmethod
     def read(self, offset: int, size: int) -> bytes:
@@ -135,37 +139,24 @@ class BaseImageHandler(ABC):
 
     def _add_to_file_cache(self, cache_key: str, files: List[FileInfo]) -> None:
         """Add to file cache with LRU eviction."""
-        # Check if we need to evict
-        if len(self._file_cache) >= self.MAX_CACHE_SIZE:
-            # Remove oldest entries
-            sorted_keys = sorted(
-                self._file_cache_access.keys(),
-                key=lambda k: self._file_cache_access[k]
-            )
-            for key in sorted_keys[:self.CACHE_EVICTION_BATCH]:
-                del self._file_cache[key]
-                del self._file_cache_access[key]
-        
-        # Add to cache
+        if cache_key in self._file_cache:
+            self._file_cache.move_to_end(cache_key)
+        self._evict_lru(self._file_cache)
         self._file_cache[cache_key] = files
-        self._file_cache_access[cache_key] = datetime.now()
 
     def _add_to_metadata_cache(self, cache_key: str, file_info: FileInfo) -> None:
         """Add to metadata cache with LRU eviction."""
-        # Check if we need to evict
-        if len(self._metadata_cache) >= self.MAX_CACHE_SIZE:
-            # Remove oldest entries
-            sorted_keys = sorted(
-                self._metadata_cache_access.keys(),
-                key=lambda k: self._metadata_cache_access[k]
-            )
-            for key in sorted_keys[:self.CACHE_EVICTION_BATCH]:
-                del self._metadata_cache[key]
-                del self._metadata_cache_access[key]
-        
-        # Add to cache
+        if cache_key in self._metadata_cache:
+            self._metadata_cache.move_to_end(cache_key)
+        self._evict_lru(self._metadata_cache)
         self._metadata_cache[cache_key] = file_info
-        self._metadata_cache_access[cache_key] = datetime.now()
+
+    def _evict_lru(self, cache: OrderedDict) -> None:
+        """Evict oldest cache entries without sorting the whole cache."""
+        evicted = 0
+        while len(cache) >= self.MAX_CACHE_SIZE and evicted < self.CACHE_EVICTION_BATCH:
+            cache.popitem(last=False)
+            evicted += 1
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
@@ -187,7 +178,7 @@ class BaseImageHandler(ABC):
         # Check cache first
         if cache_key in self._file_cache:
             self._cache_hits += 1
-            self._file_cache_access[cache_key] = datetime.now()  # Update access time
+            self._file_cache.move_to_end(cache_key)
             return self._file_cache[cache_key]
         
         self._cache_misses += 1
@@ -255,6 +246,10 @@ class BaseImageHandler(ABC):
         self._add_to_file_cache(cache_key, files)
         return files
 
+    def list_files_for_extraction(self, partition_offset: int, path: str = "/") -> List[FileInfo]:
+        """List files for extraction. Subclasses may skip costly metadata."""
+        return self.list_files(partition_offset, path)
+
     def get_file_metadata(self, partition_offset: int, file_path: str) -> Optional[FileInfo]:
         """Get metadata for a specific file using pytsk3 (with caching)."""
         cache_key = f"{partition_offset}:{file_path}"
@@ -262,7 +257,7 @@ class BaseImageHandler(ABC):
         # Check cache first
         if cache_key in self._metadata_cache:
             self._cache_hits += 1
-            self._metadata_cache_access[cache_key] = datetime.now()  # Update access time
+            self._metadata_cache.move_to_end(cache_key)
             return self._metadata_cache[cache_key]
         
         self._cache_misses += 1
@@ -317,36 +312,95 @@ class BaseImageHandler(ABC):
             print(f"Error getting file metadata: {e}")
             return None
 
-    def read_file(self, partition_offset: int, file_path: str) -> Optional[bytes]:
-        """Read content of a specific file using pytsk3."""
+    def _open_file_for_read(self, partition_offset: int, file_path: str):
+        """Open a non-directory file for reading and return (file, size)."""
         fs = self.get_filesystem(partition_offset)
         if not fs:
             return None
-        
+
         try:
-            # Open file
             file_obj = fs.open(file_path)
             meta = file_obj.info.meta
-            
+
             if not meta or meta.type == pytsk3.TSK_FS_META_TYPE_DIR:
                 return None
-            
-            # Read file content
-            size = meta.size
-            content = b''
-            offset = 0
-            
-            while offset < size:
-                to_read = min(1024 * 1024, size - offset)  # 1MB chunks
-                data = file_obj.read_random(offset, to_read)
+
+            return file_obj, meta.size
+
+        except Exception as e:
+            print(f"Error opening file: {e}")
+            return None
+
+    def iter_file_chunks(
+        self,
+        partition_offset: int,
+        file_path: str,
+        offset: int = 0,
+        size: Optional[int] = None,
+        chunk_size: int = DEFAULT_READ_CHUNK_SIZE,
+    ) -> Iterator[bytes]:
+        """Yield file content chunks without buffering the entire file."""
+        opened = self._open_file_for_read(partition_offset, file_path)
+        if not opened:
+            return
+
+        file_obj, file_size = opened
+        current_offset = max(offset, 0)
+        if current_offset >= file_size:
+            return
+
+        remaining = (
+            file_size - current_offset
+            if size is None
+            else min(size, file_size - current_offset)
+        )
+        while remaining > 0:
+            to_read = min(chunk_size, remaining)
+            data = file_obj.read_random(current_offset, to_read)
+            if not data:
+                break
+            yield data
+            current_offset += len(data)
+            remaining -= len(data)
+
+    def read_file(
+        self,
+        partition_offset: int,
+        file_path: str,
+        offset: int = 0,
+        max_size: Optional[int] = None,
+        chunk_size: int = DEFAULT_READ_CHUNK_SIZE,
+    ) -> Optional[bytes]:
+        """Read content of a specific file using pytsk3."""
+        opened = self._open_file_for_read(partition_offset, file_path)
+        if not opened:
+            return None
+
+        file_obj, file_size = opened
+
+        try:
+            current_offset = max(offset, 0)
+            if current_offset >= file_size:
+                return b''
+
+            remaining = file_size - current_offset
+            if max_size is not None:
+                remaining = min(remaining, max_size)
+
+            content = bytearray()
+
+            while remaining > 0:
+                to_read = min(chunk_size, remaining)
+                data = file_obj.read_random(current_offset, to_read)
                 if not data:
                     break
-                content += data
-                offset += len(data)
-            
+                content.extend(data)
+                current_offset += len(data)
+                remaining -= len(data)
+
             # pytsk3.File doesn't have close() method
             # file_obj.close()
-            return content
+            return bytes(content)
 
         except Exception as e:
             print(f"Error reading file: {e}")
@@ -354,6 +408,9 @@ class BaseImageHandler(ABC):
 
     def get_partitions(self) -> List[PartitionInfo]:
         """Detect partitions in the image. Override in subclass for better detection."""
+        if self._partitions_cache is not None:
+            return self._partitions_cache
+
         partitions = []
         
         try:
@@ -404,6 +461,7 @@ class BaseImageHandler(ABC):
         except Exception as e:
             print(f"Partition detection error: {e}")
         
+        self._partitions_cache = partitions
         return partitions
     
     def _identify_filesystem(self, offset: int) -> Optional[str]:

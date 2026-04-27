@@ -373,9 +373,16 @@ class VMDKHandler(BaseImageHandler):
         """Get file metadata using the shared pytsk3 path."""
         return super().get_file_metadata(partition_offset, file_path)
     
-    def read_file(self, partition_offset: int, file_path: str) -> Optional[bytes]:
+    def read_file(
+        self,
+        partition_offset: int,
+        file_path: str,
+        offset: int = 0,
+        max_size: Optional[int] = None,
+        chunk_size: int = BaseImageHandler.DEFAULT_READ_CHUNK_SIZE,
+    ) -> Optional[bytes]:
         """Read file content using the shared pytsk3 path."""
-        return super().read_file(partition_offset, file_path)
+        return super().read_file(partition_offset, file_path, offset, max_size, chunk_size)
     
     def get_image_handle(self):
         """Get pytsk3 image handle for filesystem operations."""

@@ -99,10 +99,19 @@ def _detect_filesystem_with_tsk(handler, offset: int) -> str:
 
 def _read_partitions_with_tsk(handler) -> List[Partition]:
     """Read partitions using pytsk3."""
+    cached = getattr(handler, "_partition_tool_cache", None)
+    if cached is not None:
+        return cached
+
     partitions = []
-    
+
     try:
-        img_handle = handler.get_image_handle()
+        try:
+            img_handle = handler.get_image_handle()
+        except Exception:
+            partitions = _handler_partitions_to_output(handler)
+            setattr(handler, "_partition_tool_cache", partitions)
+            return partitions
         
         # Try to get volume info (partition table)
         try:
@@ -133,6 +142,7 @@ def _read_partitions_with_tsk(handler) -> List[Partition]:
                 ))
 
             if partitions:
+                setattr(handler, "_partition_tool_cache", partitions)
                 return partitions
 
         except Exception:
@@ -140,6 +150,7 @@ def _read_partitions_with_tsk(handler) -> List[Partition]:
 
         partitions = _handler_partitions_to_output(handler)
         if partitions:
+            setattr(handler, "_partition_tool_cache", partitions)
             return partitions
 
         # No partition table found, treat entire image as single partition
@@ -157,6 +168,7 @@ def _read_partitions_with_tsk(handler) -> List[Partition]:
     except Exception as e:
         print(f"Error reading partitions with TSK: {e}")
     
+    setattr(handler, "_partition_tool_cache", partitions)
     return partitions
 
 
@@ -176,8 +188,8 @@ async def list_partitions(input_data: Dict[str, Any]) -> Dict[str, Any]:
         # Validate input
         input_model = ListPartitionsInput(**input_data)
         
-        # Get handler
-        handler = ImageDetector.get_handler(input_model.image_path)
+        # Get cached handler so repeated partition queries do not reopen images.
+        handler = ImageDetector.get_handler_cached(input_model.image_path)
         
         if not handler:
             return ErrorOutput(
@@ -185,9 +197,7 @@ async def list_partitions(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 code="UNSUPPORTED_FORMAT"
             ).model_dump()
         
-        # Read partitions using pytsk3
-        with handler:
-            partitions = _read_partitions_with_tsk(handler)
+        partitions = _read_partitions_with_tsk(handler)
         
         # Build output
         output = PartitionsOutput(

@@ -176,6 +176,7 @@ class ImageDetector:
         Returns:
             Instance of appropriate handler or None
         """
+        image_path = os.path.abspath(image_path)
         format_name = cls.detect_format(image_path)
         
         if format_name and format_name in cls.HANDLERS:
@@ -200,13 +201,15 @@ class ImageDetector:
         """
         global _handler_cache
         
+        cache_key = os.path.abspath(image_path)
+
         with _cache_lock:
-            if image_path not in _handler_cache:
-                handler = cls.get_handler(image_path)
+            if cache_key not in _handler_cache:
+                handler = cls.get_handler(cache_key)
                 if handler:
                     handler.open()
-                    _handler_cache[image_path] = handler
-            return _handler_cache.get(image_path)
+                    _handler_cache[cache_key] = handler
+            return _handler_cache.get(cache_key)
 
     @classmethod
     def invalidate_handler(cls, image_path: str = None) -> None:
@@ -219,12 +222,13 @@ class ImageDetector:
         
         with _cache_lock:
             if image_path:
-                if image_path in _handler_cache:
+                cache_key = os.path.abspath(image_path)
+                if cache_key in _handler_cache:
                     try:
-                        _handler_cache[image_path].close()
+                        _handler_cache[cache_key].close()
                     except Exception:
                         pass
-                    del _handler_cache[image_path]
+                    del _handler_cache[cache_key]
             else:
                 # Clear all handlers
                 for handler in list(_handler_cache.values()):
